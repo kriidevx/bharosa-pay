@@ -10,6 +10,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
 from .explain import generate_reasons
+from .graph_analyzer import get_upi_risk_from_graph
 
 DATA_DIR = Path(__file__).parent / "data"
 
@@ -185,6 +186,19 @@ def score_qr(qr_payload: str) -> dict:
     elif target_merchant:
         score += SIGNAL_TABLE["verified_status"][1]
         signals.append({"signal": "verified_status", "status": "negative"})
+
+    # Signal 8: Graph-based anomaly detection (NetworkX)
+    if upi_id:
+        graph_risk = get_upi_risk_from_graph(upi_id)
+        if graph_risk["is_anomalous"]:
+            score += graph_risk["graph_score_modifier"]
+            for anomaly in graph_risk["anomaly_signals"]:
+                signals.append({
+                    "signal": f"graph_{anomaly['signal']}",
+                    "status": "negative",
+                    "severity": anomaly["severity"],
+                    "detail": anomaly["detail"],
+                })
 
     # Clamp score
     score = max(0, min(100, score))

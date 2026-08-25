@@ -33,9 +33,25 @@ SIGNAL_TEMPLATES = {
         "positive": "This merchant holds verified status on the platform.",
         "negative": "This merchant is not verified — exercise caution.",
     },
+    # Graph-based signals (NetworkX anomaly detection)
+    "graph_multi_merchant_link": {
+        "negative": None,  # Uses dynamic detail from graph_analyzer
+    },
+    "graph_fraud_ring_member": {
+        "negative": None,
+    },
+    "graph_network_bridge": {
+        "negative": None,
+    },
+    "graph_linked_to_multi_upi_merchant": {
+        "negative": None,
+    },
 }
 
 SIGNAL_PRIORITY = [
+    "graph_fraud_ring_member",
+    "graph_multi_merchant_link",
+    "graph_network_bridge",
     "merchant_registered",
     "upi_id_match",
     "name_match",
@@ -43,6 +59,7 @@ SIGNAL_PRIORITY = [
     "verified_status",
     "high_transaction_volume",
     "reasonable_amount",
+    "graph_linked_to_multi_upi_merchant",
 ]
 
 
@@ -72,13 +89,21 @@ def generate_reasons(signals: list[dict], max_reasons: int = 5) -> list[dict]:
         if sig["status"] == "neutral":
             continue
 
-        template = SIGNAL_TEMPLATES.get(sig["signal"], {}).get(sig["status"])
-        if template:
+        # Graph signals carry their own detail text
+        if sig["signal"].startswith("graph_") and sig.get("detail"):
             reasons.append({
-                "signal": sig["signal"].replace("_", " ").title(),
+                "signal": sig["signal"].replace("graph_", "").replace("_", " ").title(),
                 "status": sig["status"],
-                "text": template,
+                "text": sig["detail"],
             })
+        else:
+            template = SIGNAL_TEMPLATES.get(sig["signal"], {}).get(sig["status"])
+            if template:
+                reasons.append({
+                    "signal": sig["signal"].replace("_", " ").title(),
+                    "status": sig["status"],
+                    "text": template,
+                })
 
         if len(reasons) >= max_reasons:
             break

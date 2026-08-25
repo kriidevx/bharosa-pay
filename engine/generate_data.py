@@ -138,6 +138,21 @@ def generate_qr_registry(merchants: list[dict]) -> list[dict]:
 
         qr_entries.append(fraudulent_qr)
 
+    # Generate money-mule patterns: single UPI ID linked to many merchants
+    # This is the key graph anomaly the NetworkX analyzer should detect
+    mule_upis = [f"mule{i}@upi" for i in range(1, 6)]
+    for mule_upi in mule_upis:
+        target_merchants = random.sample(merchants, random.randint(4, 8))
+        for m in target_merchants:
+            qr_entries.append({
+                "merchant_id": m["id"],
+                "upi_id": mule_upi,
+                "display_name": m["name"],
+                "amount": random.choice([100, 200, 500, 1000]),
+                "is_fraudulent": True,
+                "fraud_type": "money_mule_network",
+            })
+
     random.shuffle(qr_entries)
     return qr_entries
 
