@@ -1,0 +1,23 @@
+# Bharosa Pay — Docker Compose (Track 4: Aaradhya)
+# docker-compose up should bring up the full stack from a clean machine.
+
+version: "3.8"
+
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./engine:/app/engine
+    # command: uvicorn main:app --host 0.0.0.0 --port 8000
+
+  dashboard:
+    build: ./dashboard
+    ports:
+      - "8501:8501"
+    depends_on:
+      - backend
+    # command: streamlit run app.py --server.port 8501
+
+# TODO(Aaradhya): Add Dockerfiles, finalize configuration
