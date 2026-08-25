@@ -2,13 +2,14 @@
 pandas>=2.0.0
 faker>=18.0.0
 
-# Engine
+# Engine (Track 1 - Kruthi)
 networkx>=3.0
 
 # Backend (Track 2 - Likhith)
 fastapi>=0.100.0
 uvicorn>=0.23.0
-sqlalchemy>=2.0.0
+supabase>=2.0.0
+python-dotenv>=1.0.0
 
 # Dashboard (Track 4 - Aaradhya)
 streamlit>=1.25.0
