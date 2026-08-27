@@ -69,7 +69,6 @@ async def verify_qr_endpoint(req: VerifyRequest):
 
     return result
 
-
 @app.post("/report-qr")
 async def report_qr_endpoint(req: ReportRequest):
     valid_categories = [
@@ -78,6 +77,7 @@ async def report_qr_endpoint(req: ReportRequest):
         "SUSPICIOUS_AMOUNT",
         "OTHER",
     ]
+
     if req.category not in valid_categories:
         raise HTTPException(
             status_code=400,
@@ -89,8 +89,13 @@ async def report_qr_endpoint(req: ReportRequest):
             "qr_payload": req.qr_payload,
             "category": req.category,
         }).execute()
-    except Exception:
-        pass  # Table might not exist yet, still return success
+
+    except Exception as e:
+        print("REPORT INSERT ERROR:", repr(e))
+        raise HTTPException(
+            status_code=500,
+            detail=f"Report could not be saved: {e}",
+        )
 
     return {"status": "received"}
 
