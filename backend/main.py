@@ -128,6 +128,15 @@ async def get_stats():
         }
 
 
+@app.get("/")
+async def root():
+    return {
+        "name": "Bharosa Pay API",
+        "version": "1.0.0",
+        "endpoints": ["/verify-qr", "/report-qr", "/stats", "/health", "/docs"],
+    }
+
+
 @app.get("/health")
 async def health():
     return {"status": "ok", "engine": "active"}
