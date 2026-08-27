@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../services/api_service.dart';
 
 /// The exact category values the backend accepts for `/report-qr`.
 /// These must NEVER be renamed — only the labels shown to the user
@@ -12,25 +13,22 @@ enum ReportCategory {
 
   const ReportCategory(this.backendValue, this.label);
 
-  /// The exact string the backend expects, e.g. "QR_APPEARS_TAMPERED".
+  /// The exact string the backend expects.
   final String backendValue;
 
-  /// Friendly text shown to the user in the dropdown.
+  /// Friendly text shown to the user.
   final String label;
 }
 
-/// Lets the user report a QR they believe is suspicious, incorrect,
-/// or tampered with.
-///
-/// This screen only handles UI + local selection state for this
-/// stage. It does NOT call ApiService.reportQr() yet — that wiring
-/// comes in a later stage once we're ready to connect the real
-/// `/report-qr` call using [qrPayload] and the category selected here.
+/// Lets the user report a QR they believe is suspicious,
+/// incorrect, or tampered with.
 class ReportScreen extends StatefulWidget {
-  const ReportScreen({super.key, required this.qrPayload});
+  const ReportScreen({
+    super.key,
+    required this.qrPayload,
+  });
 
-  /// The original scanned QR payload. Kept as data only — not shown
-  /// prominently on screen — for future API integration.
+  /// The original scanned QR payload.
   final String qrPayload;
 
   @override
@@ -38,30 +36,76 @@ class ReportScreen extends StatefulWidget {
 }
 
 class _ReportScreenState extends State<ReportScreen> {
-  // Brand colors, kept consistent with the rest of Bharosa Pay.
+  // Brand colors.
   static const Color _navy = Color(0xFF102A43);
   static const Color _green = Color(0xFF1FA25A);
   static const Color _lightBackground = Color(0xFFF7F9FC);
 
   ReportCategory? _selectedCategory;
 
-  /// Whether the form has enough info to allow submission.
-  /// A category must be selected before "Submit Report" is enabled.
+  final ApiService _apiService = ApiService();
+
+  bool _isSubmitting = false;
+
+  /// A category must be selected before submission is allowed.
   bool get _canSubmit => _selectedCategory != null;
 
-  void _onSubmitPressed() {
-    if (!_canSubmit) return;
+  /// Sends the report to the backend.
+  Future<void> _onSubmitPressed() async {
+    // Prevent submission without a category or while already submitting.
+    if (!_canSubmit || _isSubmitting) return;
 
-    // TODO: Replace this with the real backend call once wired up:
-    //   await ApiService().reportQr(
-    //     qrPayload: widget.qrPayload,
-    //     category: _selectedCategory!.backendValue,
-    //   );
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Report submission will be connected soon.'),
-      ),
-    );
+    setState(() {
+      _isSubmitting = true;
+    });
+
+    try {
+      await _apiService.reportQr(
+        qrPayload: widget.qrPayload,
+        category: _selectedCategory!.backendValue,
+      );
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Report submitted successfully.'),
+        ),
+      );
+
+      // Return to the result screen after successful submission.
+      Navigator.of(context).pop();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.message),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Something went wrong while submitting your report.',
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSubmitting = false;
+        });
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _apiService.dispose();
+    super.dispose();
   }
 
   @override
@@ -101,10 +145,16 @@ class _ReportScreenState extends State<ReportScreen> {
                     shape: BoxShape.circle,
                     color: _navy.withOpacity(0.08),
                   ),
-                  child: const Icon(Icons.flag_outlined, size: 44, color: _navy),
+                  child: const Icon(
+                    Icons.flag_outlined,
+                    size: 44,
+                    color: _navy,
+                  ),
                 ),
               ),
+
               const SizedBox(height: 20),
+
               Text(
                 'Help us keep Bharosa Pay users safe by telling us what looks wrong with this QR.',
                 textAlign: TextAlign.center,
@@ -128,13 +178,17 @@ class _ReportScreenState extends State<ReportScreen> {
                   ),
                 ),
               ),
+
               const SizedBox(height: 8),
+
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: _navy.withOpacity(0.15)),
+                  border: Border.all(
+                    color: _navy.withOpacity(0.15),
+                  ),
                 ),
                 child: DropdownButtonHideUnderline(
                   child: DropdownButton<ReportCategory>(
@@ -142,32 +196,46 @@ class _ReportScreenState extends State<ReportScreen> {
                     isExpanded: true,
                     hint: Text(
                       'Choose a category',
-                      style: TextStyle(color: _navy.withOpacity(0.5)),
+                      style: TextStyle(
+                        color: _navy.withOpacity(0.5),
+                      ),
                     ),
-                    icon: Icon(Icons.keyboard_arrow_down, color: _navy),
+                    icon: const Icon(
+                      Icons.keyboard_arrow_down,
+                      color: _navy,
+                    ),
                     items: ReportCategory.values.map((category) {
                       return DropdownMenuItem<ReportCategory>(
                         value: category,
                         child: Text(
                           category.label,
-                          style: const TextStyle(fontSize: 15, color: _navy),
+                          style: const TextStyle(
+                            fontSize: 15,
+                            color: _navy,
+                          ),
                         ),
                       );
                     }).toList(),
-                    onChanged: (value) {
-                      setState(() => _selectedCategory = value);
-                    },
+                    onChanged: _isSubmitting
+                        ? null
+                        : (value) {
+                            setState(() {
+                              _selectedCategory = value;
+                            });
+                          },
                   ),
                 ),
               ),
 
-              // Clear hint if nothing is selected yet, so the user
-              // understands why the button below is disabled.
+              // --- Selection hint ---
               if (_selectedCategory == null) ...[
                 const SizedBox(height: 6),
                 Text(
                   'Please select a category to continue.',
-                  style: TextStyle(fontSize: 12, color: _navy.withOpacity(0.5)),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: _navy.withOpacity(0.5),
+                  ),
                 ),
               ],
 
@@ -178,7 +246,10 @@ class _ReportScreenState extends State<ReportScreen> {
                 width: double.infinity,
                 height: 52,
                 child: ElevatedButton(
-                  onPressed: _canSubmit ? _onSubmitPressed : null,
+                  onPressed:
+                      _canSubmit && !_isSubmitting
+                          ? _onSubmitPressed
+                          : null,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: _navy,
                     disabledBackgroundColor: _navy.withOpacity(0.3),
@@ -188,10 +259,25 @@ class _ReportScreenState extends State<ReportScreen> {
                     ),
                     elevation: 0,
                   ),
-                  child: const Text(
-                    'Submit Report',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                  ),
+                  child: _isSubmitting
+                      ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor:
+                                AlwaysStoppedAnimation<Color>(
+                              Colors.white,
+                            ),
+                          ),
+                        )
+                      : const Text(
+                          'Submit Report',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
                 ),
               ),
 
@@ -199,7 +285,10 @@ class _ReportScreenState extends State<ReportScreen> {
 
               // --- Reassurance ---
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 12,
+                ),
                 decoration: BoxDecoration(
                   color: _green.withOpacity(0.08),
                   borderRadius: BorderRadius.circular(12),
@@ -207,7 +296,11 @@ class _ReportScreenState extends State<ReportScreen> {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(Icons.lock_outline, size: 16, color: _green),
+                    const Icon(
+                      Icons.lock_outline,
+                      size: 16,
+                      color: _green,
+                    ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(

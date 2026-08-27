@@ -92,7 +92,6 @@ class _ScannerScreenState extends State<ScannerScreen> {
     // again immediately.
     if (!mounted) return;
     setState(() => _isProcessing = false);
-    _controller.start();
   }
 
   Future<void> _toggleTorch() async {
@@ -312,7 +311,7 @@ class _CameraErrorView extends StatelessWidget {
               Text(
                 _message,
                 textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.white, fontSize: 14),
+                style: const TextStyle(color: Color.fromARGB(255, 255, 255, 255), fontSize: 14),
               ),
               const SizedBox(height: 24),
               TextButton(
