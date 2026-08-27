@@ -1,19 +1,11 @@
-# Shared dependencies
+# Engine
 pandas>=2.0.0
 faker>=18.0.0
-
-# Engine
 networkx>=3.0
 
-# Backend (Track 2 - Likhith)
+# Backend
 fastapi>=0.100.0
 uvicorn>=0.23.0
-sqlalchemy>=2.0.0
-
-# Dashboard (Track 4 - Aaradhya)
-streamlit>=1.25.0
-requests>=2.31.0
-
-# Testing
-pytest>=7.4.0
+supabase>=2.0.0
+pydantic>=2.0.0
 httpx>=0.24.0

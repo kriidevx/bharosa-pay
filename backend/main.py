@@ -14,7 +14,9 @@ from pydantic import BaseModel
 from supabase import create_client
 
 # Add project root to path so engine is importable
-sys.path.insert(0, str(Path(__file__).parent.parent))
+project_root = str(Path(__file__).parent.parent)
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
 from engine import verify_qr
 
 SUPABASE_URL = os.getenv("SUPABASE_URL", "https://gecottkvhvesjarxrdnu.supabase.co")
