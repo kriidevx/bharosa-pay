@@ -1,0 +1,26 @@
+{
+  "source": "RBI/NPCI Official Data (Parliament Reply, Apr 2026)",
+  "fy_2025_26": {
+    "total_fraud_cases_lakhs": 16.29,
+    "total_amount_crores": 1226.37,
+    "total_upi_users_crores": 55.49,
+    "monthly_txn_volume_billions": 20.39
+  },
+  "fraud_type_distribution": {
+    "collect_request_scam": "most common overall",
+    "qr_swap": "most common for P2M/in-store",
+    "sim_swap": "high value per incident",
+    "mule_accounts": "3-7 hops before cashout",
+    "fake_app_phishing": "growing in 2026"
+  },
+  "npci_controls_2026": [
+    "Device binding (mobile number + device)",
+    "Two-factor authentication via UPI PIN",
+    "Daily transaction limits",
+    "AI/ML fraud monitoring (MuleHunter.AI)",
+    "72-hour freeze on SIM-swap accounts",
+    "Cooling period for new VPAs",
+    "Bank-side velocity limits per VPA",
+    "CUISF 2025 security framework"
+  ]
+}
