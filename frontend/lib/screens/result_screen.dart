@@ -1,13 +1,10 @@
 import 'package:flutter/material.dart';
 
+import '../services/payment_service.dart';
 import 'report_screen.dart';
 import 'scanner_screen.dart';
 
 /// A single reason/signal returned by the backend for a QR result.
-///
-/// This is a lightweight local representation only — it will later be
-/// replaced by whatever `models/verification_result.dart` defines.
-/// Nothing here invents, reorders, or reinterprets backend text.
 class ResultReason {
   const ResultReason({
     required this.signal,
@@ -15,27 +12,12 @@ class ResultReason {
     required this.text,
   });
 
-  /// Short label for the signal, e.g. "Merchant verified".
   final String signal;
-
-  /// Backend-provided status string, e.g. "positive" or "negative".
-  /// Used only to pick an icon/color — not to decide anything.
   final String status;
-
-  /// Full explanation text, shown exactly as returned by the backend.
   final String text;
 }
 
 /// Displays the verification result for a scanned QR.
-///
-/// Bharosa Pay's backend is the only source of truth for
-/// [classification] and [trustScore] — this screen only renders
-/// whatever it is given. It does not calculate, guess, or override
-/// any of these values.
-///
-/// [classification] is expected to be one of:
-///   "VERIFIED", "CAUTION", "SUSPICIOUS"
-/// exactly as returned by the backend.
 class ResultScreen extends StatelessWidget {
   const ResultScreen({
     super.key,
@@ -44,25 +26,16 @@ class ResultScreen extends StatelessWidget {
     required this.merchantName,
     required this.reasons,
     required this.qrPayload,
-    this.onPayNow,
-    this.onPayAnyway,
   });
 
   final String classification;
   final int trustScore;
   final String? merchantName;
   final List<ResultReason> reasons;
+
+  /// Original raw UPI QR payload.
   final String qrPayload;
 
-  /// TODO: Replace with real UPI payment-app redirection once
-  /// payment_service.dart exists. Currently a placeholder callback.
-  final VoidCallback? onPayNow;
-
-  /// TODO: Replace with real UPI payment-app redirection once
-  /// payment_service.dart exists. Currently a placeholder callback.
-  final VoidCallback? onPayAnyway;
-
-  // Brand colors, kept consistent with Home/Scanner/Processing.
   static const Color _navy = Color(0xFF102A43);
   static const Color _lightBackground = Color(0xFFF7F9FC);
 
@@ -70,9 +43,7 @@ class ResultScreen extends StatelessWidget {
   static const Color _cautionColor = Color(0xFFE58A00);
   static const Color _suspiciousColor = Color(0xFFD8342A);
 
-  /// Visual configuration for each of the three backend-driven states.
-  /// This only maps a given classification string to presentation —
-  /// it never decides which classification applies.
+  /// Visual configuration based on the backend classification.
   _StateVisuals get _visuals {
     switch (classification) {
       case 'VERIFIED':
@@ -82,6 +53,7 @@ class ResultScreen extends StatelessWidget {
           title: 'VERIFIED',
           subtitle: 'This QR is Safe to Pay',
         );
+
       case 'CAUTION':
         return _StateVisuals(
           color: _cautionColor,
@@ -89,6 +61,7 @@ class ResultScreen extends StatelessWidget {
           title: 'CAUTION',
           subtitle: 'Proceed with Caution',
         );
+
       case 'SUSPICIOUS':
         return _StateVisuals(
           color: _suspiciousColor,
@@ -96,10 +69,8 @@ class ResultScreen extends StatelessWidget {
           title: 'SUSPICIOUS',
           subtitle: "We don't recommend paying",
         );
+
       default:
-        // Defensive fallback only — the backend contract guarantees
-        // one of the three values above. This is not scoring logic,
-        // just a safe display fallback if something unexpected arrives.
         return _StateVisuals(
           color: _navy,
           icon: Icons.help_outline,
@@ -109,27 +80,79 @@ class ResultScreen extends StatelessWidget {
     }
   }
 
-  void _showNotConnectedYet(BuildContext context, String action) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('$action is not connected yet.')),
-    );
+  /// Opens the UPI payment application using the original QR payload.
+  Future<void> _openPayment(BuildContext context) async {
+    try {
+      await PaymentService.openUpiPayment(qrPayload);
+    } catch (e) {
+      if (!context.mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString()),
+        ),
+      );
+    }
   }
 
-  /// Navigates to the scanner so the user can scan a new QR.
+  /// Shows an explicit confirmation before allowing payment
+  /// for a QR classified as CAUTION.
+  Future<void> _payAnyway(BuildContext context) async {
+    final shouldContinue = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Proceed with payment?'),
+          content: const Text(
+            'Bharosa Pay found some unusual details in this QR. '
+            'Please make sure the merchant name and payment amount '
+            'are correct before continuing.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop(false);
+              },
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop(true);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _cautionColor,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Pay Anyway'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldContinue == true && context.mounted) {
+      await _openPayment(context);
+    }
+  }
+
+  /// Opens the scanner for another QR.
   void _scanAnother(BuildContext context) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const ScannerScreen()),
-    );
-  }
+  Navigator.pushReplacement(
+    context,
+    MaterialPageRoute(
+      builder: (_) => const ScannerScreen(),
+    ),
+  );
+}
 
-  /// Navigates to ReportScreen, passing the original qrPayload
-  /// unchanged.
+  /// Opens the QR reporting screen.
   void _reportQr(BuildContext context) {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => ReportScreen(qrPayload: qrPayload),
+        builder: (_) => ReportScreen(
+          qrPayload: qrPayload,
+        ),
       ),
     );
   }
@@ -162,7 +185,9 @@ class ResultScreen extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // --- Status header ---
+              // -----------------------------
+              // STATUS HEADER
+              // -----------------------------
               Center(
                 child: Column(
                   children: [
@@ -173,7 +198,11 @@ class ResultScreen extends StatelessWidget {
                         shape: BoxShape.circle,
                         color: visuals.color.withOpacity(0.12),
                       ),
-                      child: Icon(visuals.icon, size: 48, color: visuals.color),
+                      child: Icon(
+                        visuals.icon,
+                        size: 48,
+                        color: visuals.color,
+                      ),
                     ),
                     const SizedBox(height: 16),
                     Text(
@@ -199,7 +228,9 @@ class ResultScreen extends StatelessWidget {
 
               const SizedBox(height: 24),
 
-              // --- Trust score card ---
+              // -----------------------------
+              // TRUST SCORE
+              // -----------------------------
               _InfoCard(
                 accentColor: visuals.color,
                 child: Column(
@@ -226,14 +257,19 @@ class ResultScreen extends StatelessWidget {
 
               const SizedBox(height: 16),
 
-              // --- Merchant name card ---
+              // -----------------------------
+              // MERCHANT NAME
+              // -----------------------------
               _InfoCard(
                 accentColor: _navy,
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Icon(Icons.storefront_outlined,
-                        size: 20, color: _navy),
+                    const Icon(
+                      Icons.storefront_outlined,
+                      size: 20,
+                      color: _navy,
+                    ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Column(
@@ -264,7 +300,9 @@ class ResultScreen extends StatelessWidget {
 
               const SizedBox(height: 16),
 
-              // --- Reasons ---
+              // -----------------------------
+              // REASONS
+              // -----------------------------
               if (reasons.isNotEmpty) ...[
                 Align(
                   alignment: Alignment.centerLeft,
@@ -285,7 +323,9 @@ class ResultScreen extends StatelessWidget {
                     children: [
                       for (int i = 0; i < reasons.length; i++) ...[
                         if (i > 0) const Divider(height: 20),
-                        _ReasonRow(reason: reasons[i]),
+                        _ReasonRow(
+                          reason: reasons[i],
+                        ),
                       ],
                     ],
                   ),
@@ -293,26 +333,39 @@ class ResultScreen extends StatelessWidget {
                 const SizedBox(height: 16),
               ],
 
-              // --- Classification-specific warning banner ---
+              // -----------------------------
+              // CAUTION WARNING
+              // -----------------------------
               if (classification == 'CAUTION')
-                _WarningBanner(
+                const _WarningBanner(
                   color: _cautionColor,
                   icon: Icons.info_outline,
                   message:
-                      'Some details about this QR look unusual. Please review carefully before proceeding.',
+                      'Some details about this QR look unusual. '
+                      'Please review carefully before proceeding.',
                 ),
+
+              // -----------------------------
+              // SUSPICIOUS WARNING
+              // -----------------------------
               if (classification == 'SUSPICIOUS')
-                _WarningBanner(
+                const _WarningBanner(
                   color: _suspiciousColor,
                   icon: Icons.block,
                   message:
-                      'This QR shows strong signs of risk. Payment has been blocked to keep you safe.',
+                      'This QR shows strong signs of risk. '
+                      'Payment has been blocked to keep you safe.',
                 ),
 
               const SizedBox(height: 24),
 
-              // --- Actions, based on classification ---
-              ..._buildActions(context, visuals),
+              // -----------------------------
+              // ACTION BUTTONS
+              // -----------------------------
+              ..._buildActions(
+                context,
+                visuals,
+              ),
 
               const SizedBox(height: 12),
             ],
@@ -322,20 +375,21 @@ class ResultScreen extends StatelessWidget {
     );
   }
 
-  /// Builds the action buttons appropriate for the given classification.
-  /// This only changes what buttons are SHOWN based on the value the
-  /// backend already provided — it does not decide the classification
-  /// itself.
-  List<Widget> _buildActions(BuildContext context, _StateVisuals visuals) {
+  /// Builds actions according to the backend classification.
+  List<Widget> _buildActions(
+    BuildContext context,
+    _StateVisuals visuals,
+  ) {
     switch (classification) {
+      // -------------------------------------
+      // VERIFIED
+      // -------------------------------------
       case 'VERIFIED':
         return [
           _PrimaryButton(
             label: 'Pay Now',
             color: visuals.color,
-            // Still a clearly marked placeholder — payment integration
-            // is not implemented yet.
-            onPressed: onPayNow ?? () => _showNotConnectedYet(context, 'Pay Now'),
+            onPressed: () => _openPayment(context),
           ),
           const SizedBox(height: 12),
           _SecondaryButton(
@@ -344,15 +398,15 @@ class ResultScreen extends StatelessWidget {
           ),
         ];
 
+      // -------------------------------------
+      // CAUTION
+      // -------------------------------------
       case 'CAUTION':
         return [
           _PrimaryButton(
             label: 'Pay Anyway',
             color: visuals.color,
-            // Still a clearly marked placeholder — payment integration
-            // is not implemented yet.
-            onPressed:
-                onPayAnyway ?? () => _showNotConnectedYet(context, 'Pay Anyway'),
+            onPressed: () => _payAnyway(context),
           ),
           const SizedBox(height: 12),
           _SecondaryButton(
@@ -366,10 +420,11 @@ class ResultScreen extends StatelessWidget {
           ),
         ];
 
+      // -------------------------------------
+      // SUSPICIOUS
+      // -------------------------------------
       case 'SUSPICIOUS':
         return [
-          // No Pay Now / Pay Anyway button here — payment must never
-          // be offered in the suspicious state.
           _PrimaryButton(
             label: 'Report QR',
             color: visuals.color,
@@ -382,6 +437,9 @@ class ResultScreen extends StatelessWidget {
           ),
         ];
 
+      // -------------------------------------
+      // UNKNOWN
+      // -------------------------------------
       default:
         return [
           _SecondaryButton(
@@ -393,8 +451,7 @@ class ResultScreen extends StatelessWidget {
   }
 }
 
-/// Bundles the icon/color/title/subtitle used to present a
-/// classification, purely for display purposes.
+/// Bundles visual properties for a classification.
 class _StateVisuals {
   const _StateVisuals({
     required this.color,
@@ -409,10 +466,12 @@ class _StateVisuals {
   final String subtitle;
 }
 
-/// A rounded white card with a thin accent-colored left border,
-/// used to present the score, merchant, and reasons sections.
+/// Rounded information card.
 class _InfoCard extends StatelessWidget {
-  const _InfoCard({required this.child, required this.accentColor});
+  const _InfoCard({
+    required this.child,
+    required this.accentColor,
+  });
 
   final Widget child;
   final Color accentColor;
@@ -426,7 +485,10 @@ class _InfoCard extends StatelessWidget {
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
         border: Border(
-          left: BorderSide(color: accentColor, width: 4),
+          left: BorderSide(
+            color: accentColor,
+            width: 4,
+          ),
         ),
         boxShadow: [
           BoxShadow(
@@ -441,10 +503,11 @@ class _InfoCard extends StatelessWidget {
   }
 }
 
-/// Renders a single backend-provided reason exactly as given —
-/// no reordering, rewriting, or reinterpreting of the text.
+/// Displays one backend-provided reason.
 class _ReasonRow extends StatelessWidget {
-  const _ReasonRow({required this.reason});
+  const _ReasonRow({
+    required this.reason,
+  });
 
   final ResultReason reason;
 
@@ -475,12 +538,19 @@ class _ReasonRow extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(_icon, size: 18, color: _color),
+        Icon(
+          _icon,
+          size: 18,
+          color: _color,
+        ),
         const SizedBox(width: 10),
         Expanded(
           child: Text(
             reason.text,
-            style: const TextStyle(fontSize: 13, color: Color(0xFF102A43)),
+            style: const TextStyle(
+              fontSize: 13,
+              color: Color(0xFF102A43),
+            ),
           ),
         ),
       ],
@@ -488,7 +558,7 @@ class _ReasonRow extends StatelessWidget {
   }
 }
 
-/// A colored warning banner used for CAUTION/SUSPICIOUS states.
+/// Warning banner.
 class _WarningBanner extends StatelessWidget {
   const _WarningBanner({
     required this.color,
@@ -512,12 +582,19 @@ class _WarningBanner extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 20, color: color),
+          Icon(
+            icon,
+            size: 20,
+            color: color,
+          ),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
               message,
-              style: TextStyle(fontSize: 13, color: color),
+              style: TextStyle(
+                fontSize: 13,
+                color: color,
+              ),
             ),
           ),
         ],
@@ -526,7 +603,7 @@ class _WarningBanner extends StatelessWidget {
   }
 }
 
-/// Full-width filled primary action button.
+/// Full-width filled primary button.
 class _PrimaryButton extends StatelessWidget {
   const _PrimaryButton({
     required this.label,
@@ -555,16 +632,22 @@ class _PrimaryButton extends StatelessWidget {
         ),
         child: Text(
           label,
-          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+          ),
         ),
       ),
     );
   }
 }
 
-/// Full-width outlined secondary action button.
+/// Full-width outlined secondary button.
 class _SecondaryButton extends StatelessWidget {
-  const _SecondaryButton({required this.label, required this.onPressed});
+  const _SecondaryButton({
+    required this.label,
+    required this.onPressed,
+  });
 
   final String label;
   final VoidCallback onPressed;
@@ -578,14 +661,19 @@ class _SecondaryButton extends StatelessWidget {
         onPressed: onPressed,
         style: OutlinedButton.styleFrom(
           foregroundColor: const Color(0xFF102A43),
-          side: BorderSide(color: const Color(0xFF102A43).withOpacity(0.3)),
+          side: BorderSide(
+            color: const Color(0xFF102A43).withOpacity(0.3),
+          ),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(14),
           ),
         ),
         child: Text(
           label,
-          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+          style: const TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
+          ),
         ),
       ),
     );
